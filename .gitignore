@@ -48,3 +48,6 @@ data/
 
 # Notebooks
 *.ipynb
+
+# Documentazione
+pdfs/
