@@ -43,5 +43,8 @@ chroma_db/
 .DS_Store
 *.swp
 
-# Dataset (Opzionale: scommenta se non vuoi caricare i CSV su git)
-# data/*.csv
+# Dataset
+data/
+
+# Notebooks
+*.ipynb
