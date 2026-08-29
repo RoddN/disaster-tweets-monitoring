@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+.env
+
+# Spark / Hadoop
+output/
+spark-warehouse/
+metastore_db/
+derby.log
+
+# Vector DB
+chroma_db/
+
+# Docker
+.docker/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+*.swp
+
+# Dataset (Opzionale: scommenta se non vuoi caricare i CSV su git)
+# data/*.csv

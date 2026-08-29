@@ -1,0 +1,13 @@
+# Provisioning delle dashboard: carica i JSON da questa directory.
+
+apiVersion: 1
+
+providers:
+  - name: "Disaster Tweets"
+    orgId: 1
+    folder: ""
+    type: file
+    disableDeletion: false
+    editable: true
+    options:
+      path: /etc/grafana/provisioning/dashboards

@@ -1,0 +1,12 @@
+# Datasource per il plugin JSON: punta alla Flask API sull'host.
+
+apiVersion: 1
+
+datasources:
+  - name: DisasterTweets-API
+    uid: disaster-tweets-api
+    type: marcusolsson-json-datasource
+    access: proxy
+    url: http://host.docker.internal:5050
+    isDefault: true
+    editable: true
