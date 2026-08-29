@@ -61,7 +61,7 @@ docker compose up -d
 
 This starts Kafka, Zookeeper, MongoDB and Grafana.
 
-### 2. Start the Spark pipeline
+### 2. Run the Spark Batch Pipeline
 
 Activate the Python virtual environment and run:
 
@@ -69,9 +69,19 @@ Activate the Python virtual environment and run:
 python spark_train_pipeline.py
 ```
 
-The script trains the model, saves it and starts the Spark streaming job that listens for messages from Kafka.
+The script trains the model on the historical dataset and saves it to the output folder.
 
-### 3. Start the Flask API
+### 3. Start the Spark Streaming Job (Speed Layer)
+
+Once the model is trained, start the real-time processing stream:
+
+```bash
+python spark_streaming.py
+```
+
+This listens to Kafka, applies the trained model with an optimized threshold (0.35 to minimize false negatives), and pushes aggregated data to MongoDB.
+
+### 4. Start the Flask API
 
 In a separate terminal:
 
@@ -79,7 +89,7 @@ In a separate terminal:
 python mongo_api.py
 ```
 
-### 4. Start the Kafka producer
+### 5. Start the Kafka producer
 
 To simulate the incoming tweets:
 
