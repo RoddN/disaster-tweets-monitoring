@@ -44,6 +44,8 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_LOG_RETENTION_HOURS: -1
+      KAFKA_LOG_RETENTION_BYTES: -1
     healthcheck:
       test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
       interval: 15s
@@ -58,18 +60,10 @@ services:
       kafka:
         condition: service_healthy
     entrypoint: ["/bin/sh", "-c"]
-    command: |
-      "
-      kafka-topics --create \
-        --if-not-exists \
-        --bootstrap-server kafka:29092 \
-        --topic disaster_tweets \
-        --partitions 3 \
-        --replication-factor 1
-      kafka-topics --describe \
-        --bootstrap-server kafka:29092 \
-        --topic disaster_tweets
-      "
+    command:
+      - |
+        kafka-topics --create --if-not-exists --bootstrap-server kafka:29092 --topic disaster_tweets --partitions 3 --replication-factor 1
+        kafka-topics --describe --bootstrap-server kafka:29092 --topic disaster_tweets
     restart: "no"
 
   # MongoDB - Serving Layer

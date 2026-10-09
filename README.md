@@ -1,132 +1,156 @@
-# Disaster Tweets - Big Data Lambda Architecture
+# Disaster Tweets: Real-Time Classification with Kafka and Spark
 
-This project implements a Lambda Architecture for processing and classifying tweets related to natural disasters.
+This project classifies tweets as "about a real disaster" or "not", as they arrive. A Spark model is trained once on a labelled dataset, then a Spark Streaming job applies it to every tweet that comes in through Kafka. The results land in MongoDB, a small Flask API exposes them, and a Grafana dashboard shows what is happening. A separate search module lets you ask questions in natural language over the disaster tweets the system has found.
 
-The system uses historical data to train a machine learning model and then applies it to tweets coming from a real-time Kafka stream. The results are stored in MongoDB and displayed through a Grafana dashboard. A separate RAG-based module allows users to search through real disaster tweets using natural language.
+## How it works
 
-## Architecture
+```
+                 train.csv (Kaggle)
+                        |
+                  train.py  (Spark MLlib, run once)
+                        |
+                  saved model
+                        |
+test.csv --> producer.py --> Kafka topic: disaster_tweets
+                                  |
+                       streaming.py (Spark Structured Streaming)
+                          |                     |
+              per-minute counts          raw tweets + predictions
+                          \                     /
+                           MongoDB (disasterdb)
+                              |            |
+                          api.py        rag.py
+                        (Flask, :5050)  (semantic search)
+                              |
+                         Grafana (:3000)
+```
 
-The project is divided into the following components:
+The design follows the Kappa approach: there is one processing path, the Kafka stream, and every view is derived from it. The API reads from the same MongoDB collections that the stream writes to. There is no separate batch layer to merge with.
 
-### 1. Batch Layer
+The one exception is model training. `train.py` runs as an offline job on the historical dataset and saves a Spark `PipelineModel`. The streaming job loads that model and uses it for every incoming tweet. To change the model, retrain it and restart the stream.
 
-The batch layer uses Apache Spark and MLlib to train a Logistic Regression model on the historical disaster tweets dataset.
+### Components
 
-The trained model is saved as a Spark `PipelineModel`, while the results of the batch processing are stored in Parquet format.
+- **`train.py`**: reads the labelled training set, cleans the text, and trains a Logistic Regression classifier with a TF-IDF pipeline. It saves the model and prints evaluation plots, which `plots.py` generates.
+- **`producer.py`**: replays the test tweets into Kafka one at a time, with a short delay between them, to simulate a live feed.
+- **`streaming.py`**: consumes the Kafka topic, classifies each tweet, and writes two things to MongoDB every five seconds: per-minute counts of total and disaster tweets, and the raw tweets with their predictions and embeddings.
+- **`api.py`**: a small Flask API that serves the aggregated counts to Grafana.
+- **`rag.py`**: semantic search over the stored tweets using MongoDB Atlas Vector Search and an LLM served through OpenRouter.
+- **`archiver.py`**: optional. Exports tweets that have not been archived yet to Parquet, for offline analysis or labelling.
+- **`reset.py`**: clears the stream collections so you can start a clean run.
+- **`config.py`**: shared settings such as the MongoDB URI, Kafka address, topic name and file paths.
 
-### 2. Speed Layer
+## Requirements
 
-The speed layer handles tweets as they arrive through Apache Kafka.
+- Python 3.10+ and Java (required by PySpark)
+- Docker and Docker Compose
+- The Kaggle dataset: [NLP with Disaster Tweets](https://www.kaggle.com/c/nlp-getting-started). Place `train.csv` and `test.csv` in the `data/` folder.
+- Optional, for semantic search: a MongoDB Atlas cluster with a vector search index, and an OpenRouter API key
 
-Spark Structured Streaming reads tweets from the `disaster_tweets` topic and uses the trained model to classify them in real time.
+## Setup
 
-The streaming job also calculates statistics using 5-minute tumbling windows. Watermarking is used to deal with tweets that arrive late.
+Create a virtual environment and install the dependencies:
 
-### 3. Serving Layer
+```bash
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
 
-The streaming results are stored in MongoDB.
-
-A small Flask API provides access to the aggregated data through JSON endpoints. This API is then used by Grafana to display the results.
-
-### 4. Visualization
-
-Grafana is used to create a dashboard showing the data produced by the streaming pipeline, including disaster-related tweet counts and other aggregated metrics.
-
-### 5. RAG Module
-
-The project also includes a semantic search module based on ChromaDB and OpenRouter.
-
-Tweets classified as real disasters are converted into embeddings and stored in a vector database. When a user asks a question, the system retrieves the most relevant tweets and sends them as context to an LLaMA model through OpenRouter.
-
-This allows users to ask questions about the collected disaster tweets using natural language.
-
-## Technology Stack
-- **Data processing and ML:** Apache Spark, PySpark, MLlib, Spark Structured Streaming
-- **Message broker:** Apache Kafka, Zookeeper
-- **Database:** MongoDB
-- **API:** Python, Flask
-- **Visualization:** Grafana
-- **Semantic search:** ChromaDB, Sentence-Transformers, OpenRouter, LLaMA
-- **Infrastructure:** Docker, Docker Compose
-
-## How to Run
-
-### 1. Start the infrastructure
-
-Start the required services with:
+Start Kafka, Zookeeper, MongoDB and Grafana:
 
 ```bash
 docker compose up -d
 ```
 
-This starts Kafka, Zookeeper, MongoDB and Grafana.
+The compose file creates the `disaster_tweets` topic automatically.
 
-### 2. Run the Spark Batch Pipeline
+## Running the pipeline
 
-Activate the Python virtual environment and run:
+Run these steps in order.
 
-```bash
-python spark_train_pipeline.py
-```
-
-The script trains the model on the historical dataset and saves it to the output folder.
-
-### 3. Start the Spark Streaming Job (Speed Layer)
-
-Once the model is trained, start the real-time processing stream:
+**1. Train the model.** This writes the model to `output/models/`.
 
 ```bash
-python spark_streaming.py
+python train.py
 ```
 
-This listens to Kafka, applies the trained model with an optimized threshold (0.35 to minimize false negatives), and pushes aggregated data to MongoDB.
-
-### 4. Start the Flask API
-
-In a separate terminal:
+**2. Start the streaming job.** Leave it running.
 
 ```bash
-python mongo_api.py
+python streaming.py
 ```
 
-### 5. Start the Kafka producer
-
-To simulate the incoming tweets:
+**3. Start the producer.** In a second terminal, this feeds the test tweets into Kafka.
 
 ```bash
-python kafka_producer.py
+python producer.py
 ```
 
-The producer sends tweets to the `disaster_tweets` Kafka topic.
-
-### 5. Open Grafana
-
-The dashboard is available at:
-
-http://localhost:3000
-
-**Default credentials:**
-- Username: `admin`
-- Password: `admin`
-
-## RAG Semantic Search
-
-To use the semantic search module, set your OpenRouter API key:
+**4. Start the API.** In a third terminal.
 
 ```bash
-export OPENROUTER_API_KEY="your-openrouter-api-key"
+python api.py
 ```
 
-Then run:
+Useful endpoints:
+
+- `GET /disaster_counts`: counts per one-minute window
+- `GET /disaster_summary`: totals, disaster ratio and number of windows
+
+**5. Open the dashboard.** Go to http://localhost:3000 and log in with `admin` / `admin`. The dashboard reads from the Flask API through the JSON datasource plugin.
+
+To start over, stop the streaming job and producer, then run:
 
 ```bash
-python rag_disaster_query.py
+python reset.py
 ```
 
-The script can be used to ask questions about the disaster tweets stored in the vector database.
+## Configuration
+
+Most settings live in `config.py`. Two things you will probably need to change:
+
+Secrets and machine-specific settings go in a `.env` file in the project root. The file is listed in `.gitignore`, so it stays out of version control. Create it from the template:
+
+```bash
+cp .env.example .env
+```
+
+Then edit `.env`:
+
+- **`MONGO_URI`**: the MongoDB connection string. The template points to the MongoDB container from `docker-compose.yml` (`mongodb://localhost:27017/`). Use your Atlas URI here if you run against Atlas.
+- **`OPENROUTER_API_KEY`**: needed only for `rag.py`.
+
+Do not commit `.env`. If a real credential has been shared or pushed anywhere, rotate it.
+
+## Semantic search (RAG)
+
+`rag.py` embeds your question with a local Sentence-Transformers model (`all-MiniLM-L6-v2`), finds the most similar stored tweets with MongoDB Atlas Vector Search, and passes them to an LLM as context. This requires a vector search index named `vector_index` on the raw tweets collection.
+
+```bash
+python rag.py
+```
+
+Then ask questions in natural language, for example: "Are there requests for ambulances?"
+
+## Project layout
+
+```
+api.py              Flask API for Grafana
+archiver.py         Optional export of raw tweets to Parquet
+config.py           Shared settings
+docker-compose.yml  Kafka, Zookeeper, MongoDB, Grafana
+grafana/            Dashboard provisioning
+plots.py            Evaluation plots for training
+producer.py         Replays test tweets into Kafka
+rag.py              Semantic search over tweets
+reset.py            Clears stream collections
+streaming.py        Spark Structured Streaming job
+text_preprocessing.py  Text cleaning used by training and streaming
+train.py            Model training
+```
 
 ## Dataset
 
 The project uses the Natural Language Processing with Disaster Tweets dataset from Kaggle:
-
 https://www.kaggle.com/c/nlp-getting-started

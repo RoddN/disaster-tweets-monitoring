@@ -1,12 +1,15 @@
 # Spark MLlib (spark_train_pipeline.py)
 pyspark==3.5.1
 kafka-python-ng==2.2.3
+numpy>=1.26.0
+matplotlib>=3.9.0
 
 # Serving Layer (mongo_api.py)
 flask==3.0.3
 pymongo==4.8.0
-
+pyarrow>=17.0.0
 # RAG + Vector DB (rag_disaster_query.py)
 chromadb==0.5.5
 sentence-transformers==3.0.1
-openai>=1.30.0
+# Environment variables from .env
+python-dotenv>=1.0.0
